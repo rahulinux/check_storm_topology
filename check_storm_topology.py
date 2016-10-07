@@ -56,7 +56,7 @@ def basic_checks(server,port):
     return sock.connect_ex((server,int(port))) == 0
        
 
-def get_available_topologies(server,topology="all"):
+def get_available_topologies(server,topology):
     """Return topology ids
     will be use to track error in given topology id
     if topology not provided it will check all 
@@ -67,7 +67,7 @@ def get_available_topologies(server,topology="all"):
     nimbus_url = "http://{0}:{1}/api/v1/topology/summary".format(server,port)
     nimbus_data = urllib2.urlopen(nimbus_url)
     ids = json.loads(nimbus_data.read())
-    if topology == "all":
+    if "all" in topology:
        tid = [ d['id'] for d in ids['topologies'] ]
     else:
        tid = [ d['id'] for d in ids['topologies'] if str(topology) in str(d['id']) ]
@@ -79,7 +79,6 @@ def check_error(topology_id):
      and botls and print errors
      return false if any error found
      """ 
-     global error_found
      nimbus_url = "http://{0}:{1}/api/v1/topology/{2}".format(server,port,topology_id)
      data = json.loads(urllib2.urlopen(nimbus_url).read()) 
      print "Checking error in {0} topology".format(topology_id) 
@@ -87,37 +86,35 @@ def check_error(topology_id):
         if spouts['lastError']:
              print spouts['lastError']
              print spouts['spoutId']
-             error_found = True
+             return  True
      for bolts in data['bolts']:
         if bolts['lastError']:
              print bolts['lastError']
              print bolts['boltId']
-             error_found = True
-     return error_found
+             return True
+     # if last 3 hours no data tranfer 
+     # means cluster not in used 
+     if data['topologyStats'][1]['emitted'] == 0: 
+          return "WARN"
+     return False
 
 
-def check_topology(topology="all"):
+def check_topology(topology):
     """get topology id using topology name
     and check error in topologies
     """
     global error_found
-    if topology == "all":
-       for topology_id in get_available_topologies(server):
+    if "all" in topology:
+       for topology_id in get_available_topologies(server,topology):
            error_found=check_error(topology_id)
     else:
-           if type(topology) == list:
-              for t in topology:
-                  print t
-                  topology_id = ''.join(get_available_topologies(server,t))
-                  if topology_id == "":
-                    print "{0} topology not found".format(t)
-                    error_found=True
-           else:
-              topology_id = ''.join(get_available_topologies(server,topology))
-              if topology_id == "":
-                 print "{0} topology not found".format(topology)
-                 error_found=check_error(topology_id)
-   
+           for t in topology:
+               topology_id = ''.join(get_available_topologies(server,t))
+               if topology_id == "":
+                 print "{0} topology not found".format(t)
+                 return True
+               error_found=check_error(topology_id)
+              
     return error_found               
 
 
@@ -127,8 +124,12 @@ if __name__ == '__main__':
     if  basic_checks(server,port) == False:
        print "Unable to connect remote host <{0}:{1}>".format(server,port)
        sys.exit(status_critical)
-    if check_topology(topology):
+    status = check_topology(topology)
+    if status == True:
        sys.exit(status_critical)
+    elif status == "WARN":
+       print "Not emmited from last 3 hours"
+       sys.exit(status_warn)
     else:
        print "No Error Found in topology"
        sys.exit(status_ok)

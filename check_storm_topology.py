@@ -19,15 +19,11 @@
 # Author         : Rahul Patil
 # Version        : 0.1 
 
-import os
 import sys
-import time
 import json
 import socket
 import docopt
 import urllib2
-import datetime
-import subprocess
 
 usage = """
 Usage: 
